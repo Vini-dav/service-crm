@@ -1,0 +1,136 @@
+# Пайплайн «Сервиса»: проверки → деплой в Google Apps Script.
+#
+# Почему один файл, а не два (ci.yml + deploy.yml): связать джобы гарантией
+# «деплой только после зелёных проверок» можно лишь внутри одного workflow —
+# через needs. Между разными файлами такой связи нет, там пришлось бы городить
+# workflow_run с его подвохами. Поэтому: два job'а в одном файле, зависимость
+# явная и видна на одной схеме в интерфейсе GitHub.
+name: Пайплайн
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Позволяет запустить деплой вручную кнопкой в интерфейсе GitHub —
+  # пригодится, когда нужно перезалить код без нового коммита.
+  workflow_dispatch:
+
+jobs:
+  # ── Проверки ────────────────────────────────────────────────────────────────
+  # Гоняются на любой ветке и на каждом PR. Дешёвые (секунды) и не трогают
+  # ничего снаружи: их задача — не пустить сломанный код к шагу деплоя.
+  checks:
+    name: Проверки
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          # Кэш npm по хешу package-lock.json — установка вместо ~30 с идёт ~5 с.
+          cache: npm
+
+      # npm ci, а не npm install: ставит строго версии из package-lock.json.
+      # Сборка на раннере обязана быть воспроизводимой — иначе «у меня работало»
+      # превращается в «а в CI другая версия линтера».
+      - run: npm ci
+
+      - name: Синтаксис (node --check)
+        run: npm run check:syntax
+
+      - name: Формулы под локаль ru_RU
+        run: npm run check:formulas
+
+      - name: Цели меню и google.script.run
+        run: npm run check:menu
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Тесты разбора заявок
+        run: npm test
+
+  # ── Деплой ──────────────────────────────────────────────────────────────────
+  # Только с main и только после зелёных проверок. На PR не запускается:
+  # тогда любой черновик уезжал бы в рабочую таблицу.
+  deploy:
+    name: Деплой в Apps Script
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Два деплоя одновременно затирали бы друг друга в одном проекте Apps Script.
+    # concurrency выстраивает их в очередь; cancel-in-progress: false — чтобы
+    # не обрывать заливку на середине.
+    concurrency:
+      group: deploy-apps-script
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Авторизация clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::Не задан секрет CLASPRC_JSON — смотри README, раздел «Секреты»."
+            exit 1
+          fi
+          # Токен кладём в RUNNER_TEMP, а не в рабочую папку: так он гарантированно
+          # не попадёт ни в артефакты, ни случайно в коммит.
+          printf '%s' "$CLASPRC_JSON" > "$RUNNER_TEMP/clasprc.json"
+          chmod 600 "$RUNNER_TEMP/clasprc.json"
+
+      - name: clasp push
+        run: npx clasp -A "$RUNNER_TEMP/clasprc.json" push --force
+
+      # clasp push заливает код, но версионное развёртывание веб-приложения
+      # продолжает отдавать ту версию, на которую указывает. Без этого шага
+      # мобильная форма диагностики осталась бы на старом коде.
+      - name: Обновить развёртывание веб-приложения
+        env:
+          DEPLOY_ID: ${{ secrets.DEPLOY_ID }}
+        run: |
+          if [ -z "$DEPLOY_ID" ]; then
+            echo "::notice::DEPLOY_ID не задан — развёртывание не обновляется, код залит только в редактор."
+            exit 0
+          fi
+          npx clasp -A "$RUNNER_TEMP/clasprc.json" deploy \
+            -i "$DEPLOY_ID" -d "CI ${GITHUB_SHA:0:7}"
+
+      # Заливка кода ничего не выполняет. Формула статуса и цвета собираются
+      # из конфига STATUSES в коде, поэтому после деплоя таблице нужно дать
+      # команду перечитать конфиг — этим и занимается хук doPost.
+      - name: Пересобрать разметку таблицы
+        env:
+          DEPLOY_ID: ${{ secrets.DEPLOY_ID }}
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$DEPLOY_ID" ] || [ -z "$DEPLOY_TOKEN" ]; then
+            echo "::notice::DEPLOY_ID или DEPLOY_TOKEN не заданы — таблица не пересобрана."
+            exit 0
+          fi
+          # -L обязателен: Apps Script отвечает на POST редиректом на
+          # googleusercontent, где и лежит тело ответа.
+          response=$(curl -sS -L --retry 2 --max-time 120 \
+            -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$DEPLOY_TOKEN\",\"action\":\"refresh\"}" \
+            "https://script.google.com/macros/s/$DEPLOY_ID/exec")
+          echo "Ответ хука: $response"
+          # Хук всегда отвечает 200 — успех или отказ различаются телом ответа,
+          # поэтому проверяем его явно, иначе шаг был бы зелёным при отказе.
+          case "$response" in
+            *'"ok":true'*) echo "✓ таблица приведена в соответствие с кодом" ;;
+            *) echo "::error::Хук не отработал: $response"; exit 1 ;;
+          esac
+
+      - name: Убрать токен
+        if: always()
+        run: rm -f "$RUNNER_TEMP/clasprc.json"

@@ -1,0 +1,23 @@
+# Токен авторизации clasp. Штатно лежит в ~/.clasprc.json, но clasp умеет класть
+# его и рядом с проектом — страхуемся, чтобы он никогда не уехал в GitHub.
+.clasprc.json
+clasprc.json
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Мусор ОС и редакторов
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Локальные настройки Claude Code (разрешения конкретной машины)
+.claude/settings.local.json
+
+# Снимки кода из веб-редактора Apps Script (npm run backup).
+# В git не нужны: историю кода ведёт сам git. Эти снимки страхуют другое —
+# состояние ЖИВОГО скрипта, о котором репозиторий ничего не знает.
+backups/

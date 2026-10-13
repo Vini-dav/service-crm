@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <style>
+    :root{
+      --bg:#f2f3f5; --card:#fff; --ink:#1c1f23; --muted:#6b7280; --line:#e5e7eb;
+      --accept:#f59e0b; --diag:#2563eb; --ready:#16a34a; --save:#111827;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{margin:0;background:var(--bg);color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:16px}
+    header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);
+      padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+    header h1{font-size:17px;margin:0}
+    .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);
+      border-radius:10px;padding:9px 14px;font-size:15px;min-height:42px}
+    .btn:active{transform:scale(.98)}
+    #list{padding:12px;max-width:640px;margin:0 auto}
+    .empty{color:var(--muted);text-align:center;padding:40px 20px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden}
+    .head{padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px}
+    .sn{font-size:22px;font-weight:700;letter-spacing:.2px;flex:1;word-break:break-all}
+    .badge{font-size:12px;font-weight:600;color:#fff;border-radius:999px;padding:4px 10px;white-space:nowrap}
+    .b0{background:var(--accept)} .b1{background:var(--diag)} .b2{background:var(--ready)}
+    .prob-short{color:var(--muted);font-size:14px;padding:0 16px 12px}
+    .body{display:none;padding:4px 16px 16px;border-top:1px solid var(--line)}
+    .card.open .body{display:block}
+    .label{font-size:13px;color:var(--muted);margin:14px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+    .prob{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;white-space:pre-wrap}
+    .chips{display:flex;flex-wrap:wrap;gap:8px}
+    .chip{border:1.5px solid var(--line);border-radius:999px;padding:9px 14px;font-size:15px;min-height:42px;
+      display:flex;align-items:center;user-select:none}
+    .chip.on{background:#eaf1ff;border-color:var(--diag);color:var(--diag);font-weight:600}
+    .scanrow{display:flex;gap:8px;align-items:stretch}
+    .scanrow .txt{flex:1;min-width:0}
+    .scan{border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:0 16px;
+          min-height:44px;font-size:15px;white-space:nowrap;cursor:pointer}
+    .scan:disabled{opacity:.5}
+    .label.warn{color:#b26b00}
+    input.txt,textarea.txt{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px;
+      font-family:inherit;background:#fff}
+    textarea.txt{min-height:70px;resize:vertical}
+    .save{width:100%;margin-top:16px;background:var(--save);color:#fff;border:none;border-radius:12px;
+      padding:14px;font-size:16px;font-weight:600;min-height:50px}
+    .save:active{opacity:.9}
+    .toggle{width:100%;margin-top:6px;border:1.5px solid var(--line);border-radius:12px;padding:13px;
+      text-align:center;font-size:16px;font-weight:600;min-height:50px;display:flex;align-items:center;
+      justify-content:center;gap:8px;color:var(--muted)}
+    .toggle.on{background:#e7f7ec;border-color:var(--ready);color:var(--ready)}
+    .toggle .box{width:20px;height:20px;border:2px solid currentColor;border-radius:5px;display:inline-block}
+    .toggle.on .box{background:var(--ready);border-color:var(--ready)}
+    #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(30px);
+      background:#111827;color:#fff;padding:11px 18px;border-radius:12px;font-size:15px;opacity:0;
+      transition:.25s;pointer-events:none;z-index:20}
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    #status{color:var(--muted);text-align:center;padding:20px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Диагностика · Сервис</h1>
+    <button class="btn" onclick="load()">Обновить</button>
+  </header>
+
+  <div id="status">Загрузка…</div>
+  <div id="list"></div>
+  <div id="toast"></div>
+
+<script>
+  var DATA = { faults: [], units: [] };
+
+  function norm(s){ return String(s).toLowerCase().replace(/\s+/g,' ').trim(); }
+
+  function load(){
+    document.getElementById('status').style.display='block';
+    document.getElementById('status').textContent='Загрузка…';
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getActiveUnits();
+  }
+  function onErr(e){ document.getElementById('status').textContent='Ошибка: '+e.message; }
+  function onData(d){
+    DATA=d;
+    document.getElementById('status').style.display='none';
+    render();
+  }
+
+  // Статус приходит с сервера — тот самый, что стоит в «Реестре».
+  // Раньше форма выводила его сама («не готов и не продиагностирован — значит
+  // Принят») и показывала «Принят» тому, что в таблице числилось заявкой.
+  // Распознавание штрихкода идёт ПО СНИМКУ, а не с живой камеры.
+  // Форма работает внутри чужого iframe (googleusercontent), и getUserMedia там
+  // упирается в политику разрешений родителя — атрибут allow="camera" ставит
+  // Google, а не мы. Поле выбора файла с capture такой проверки не проходит:
+  // оно просто открывает штатную камеру телефона и возвращает снимок.
+  // Побочная выгода: по неподвижному кадру автофокус отрабатывает надёжнее,
+  // чем по дрожащему видео в полутёмной мастерской.
+  var ZXING_URL='https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js';
+
+  function loadZxing(){
+    if(window.ZXing) return Promise.resolve();
+    return new Promise(function(res,rej){
+      var sc=document.createElement('script');
+      sc.src=ZXING_URL;
+      sc.onload=function(){ res(); };
+      sc.onerror=function(){ rej(new Error('не загрузилась библиотека распознавания')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  function zxingDecode(img,url){
+    return loadZxing().then(function(){
+      var reader=new window.ZXing.BrowserMultiFormatReader();
+      var p=reader.decodeFromImageElement ? reader.decodeFromImageElement(img)
+                                          : reader.decodeFromImageUrl(url);
+      return p.then(function(r){ return r.getText ? r.getText() : r.text; });
+    });
+  }
+
+  function decodeBarcode(file){
+    var url=URL.createObjectURL(file);
+    return new Promise(function(res,rej){
+      var img=new Image();
+      img.onload=function(){ res(img); };
+      img.onerror=function(){ rej(new Error('не смог открыть снимок')); };
+      img.src=url;
+    }).then(function(img){
+      // Родной детектор (Android Chrome) быстрее и не тянет 350 КБ по сети.
+      // На iPhone его нет — туда уезжает запасной путь через ZXing.
+      if('BarcodeDetector' in window){
+        return new window.BarcodeDetector().detect(img).then(function(codes){
+          if(codes && codes.length) return codes[0].rawValue;
+          return zxingDecode(img,url);
+        },function(){ return zxingDecode(img,url); });
+      }
+      return zxingDecode(img,url);
+    }).then(function(code){
+      URL.revokeObjectURL(url);
+      if(!code) throw new Error('штрихкод не найден');
+      return String(code).trim();
+    },function(e){
+      URL.revokeObjectURL(url);
+      throw e;
+    });
+  }
+
+  /** Поле серийника SSD: ручной ввод плюс кнопка снимка. */
+  function ssdField(parent,label,value){
+    var lab=el('div','label',label);
+    parent.appendChild(lab);
+
+    var row=el('div','scanrow');
+    var inp=el('input','txt'); inp.type='text'; inp.value=value||'';
+    inp.placeholder='введи руками или сними штрихкод';
+    inp.onclick=function(ev){ ev.stopPropagation(); };
+
+    var cam=el('input'); cam.type='file'; cam.accept='image/*';
+    cam.setAttribute('capture','environment');
+    cam.style.display='none';
+
+    var btn=el('button','scan','Скан'); btn.type='button';
+    btn.onclick=function(ev){ ev.stopPropagation(); cam.click(); };
+
+    cam.onchange=function(){
+      var file=cam.files && cam.files[0];
+      if(!file) return;
+      btn.disabled=true; btn.textContent='…';
+      decodeBarcode(file).then(function(code){
+        inp.value=code;
+        // Присваивание из кода событие не рождает — шлём сами, иначе подпись
+        // «не заполнен» останется висеть над заполненным полем.
+        inp.dispatchEvent(new Event('input'));
+        toast('Считано: '+code);
+      },function(e){
+        toast('Не распознал ('+e.message+') — введи руками');
+      }).then(function(){
+        btn.disabled=false; btn.textContent='Скан';
+        cam.value='';   // иначе повторный снимок того же файла не вызовет change
+      });
+    };
+
+    row.appendChild(inp); row.appendChild(btn); row.appendChild(cam);
+    parent.appendChild(row);
+    return { inp: inp, lab: lab };
+  }
+
+  /** Отмечен ли среди неисправностей накопитель. */
+  function ssdChosen(chipsEl){
+    var on=false;
+    chipsEl.querySelectorAll('.chip.on').forEach(function(x){
+      if(/ссд|ssd/i.test(x.dataset.fault||'')) on=true;
+    });
+    return on;
+  }
+
+  var BADGE={'Принят':'b0','Продиагностирован':'b1','Готов к выдаче':'b2'};
+  function badge(u){
+    return {cls: BADGE[u.status]||'b0', txt: u.status||'—'};
+  }
+
+  function render(){
+    var list=document.getElementById('list'); list.innerHTML='';
+    if(!DATA.units.length){
+      list.innerHTML='<div class="empty">Нет принятых железок в работе.</div>'; return;
+    }
+    DATA.units.forEach(function(u){ list.appendChild(card(u)); });
+  }
+
+  function el(tag,cls,txt){ var e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
+
+  function card(u){
+    var c=el('div','card');
+    var b=badge(u);
+
+    var head=el('div','head');
+    head.appendChild(el('div','sn', u.serial));
+    head.appendChild(el('div','badge '+b.cls, b.txt));
+    c.appendChild(head);
+
+    var short=el('div','prob-short', u.problem ? u.problem : 'жалоба не указана');
+    c.appendChild(short);
+
+    var body=el('div','body');
+
+    body.appendChild(el('div','label','Со слов заказчика'));
+    body.appendChild(el('div','prob', u.problem ? u.problem : '—'));
+
+    body.appendChild(el('div','label','Диагностика (что под замену/ремонт)'));
+    var chips=el('div','chips');
+    var chosen={}; u.checked.forEach(function(x){ chosen[norm(x)]=true; });
+    DATA.faults.forEach(function(f){
+      var ch=el('div','chip'+(chosen[norm(f)]?' on':''), f);
+      ch.dataset.fault=f;
+      ch.onclick=function(ev){ ev.stopPropagation(); ch.classList.toggle('on'); };
+      chips.appendChild(ch);
+    });
+    body.appendChild(chips);
+
+    // Серийник диска записывают при ЛЮБОЙ проверке накопителя, а не только
+    // когда его меняют, — поэтому поле видно всегда и помечается, пока пусто.
+    // Подсказка тихая: инженер и так увидит её при заполнении карточки, а
+    // блокировать сохранение нельзя — наклейка бывает содрана или нечитаема.
+    var SSD_LABEL='SSD в машине — серийный номер';
+    var ssdOut=ssdField(body, SSD_LABEL, u.ssdOut);
+    ssdOut.inp.placeholder='сними штрихкод или введи руками';
+
+    function markSsd(){
+      var empty=ssdOut.inp.value.trim()==='';
+      ssdOut.lab.textContent=SSD_LABEL+(empty?' · не заполнен':'');
+      ssdOut.lab.className='label'+(empty?' warn':'');
+    }
+    markSsd();
+    ssdOut.inp.addEventListener('input', markSsd);
+
+    // Второй номер осмыслен только при замене, поэтому блок появляется и
+    // исчезает вместе с чипом «ссд». Слушатель висит на контейнере: клик по
+    // чипу сначала переключает его класс, потом всплывает сюда — состояние
+    // к этому моменту уже новое.
+    var ssdWrap=el('div','ssd');
+    var ssdIn=ssdField(ssdWrap,'SSD установленный — серийный номер', u.ssdIn);
+    body.appendChild(ssdWrap);
+
+    function syncSsd(){ ssdWrap.style.display = ssdChosen(chips) ? 'block' : 'none'; }
+    syncSsd();
+    chips.addEventListener('click', syncSsd);
+
+    body.appendChild(el('div','label','Уточнение по запчастям'));
+    var note=el('input','txt'); note.type='text'; note.value=u.partNote||'';
+    note.placeholder='напр. процессор — сокет LGA1200; ссд — 512';
+    note.onclick=function(ev){ ev.stopPropagation(); };
+    body.appendChild(note);
+
+    body.appendChild(el('div','label','Комментарий'));
+    var com=el('textarea','txt'); com.value=u.comment||'';
+    com.placeholder='свободная заметка';
+    com.onclick=function(ev){ ev.stopPropagation(); };
+    body.appendChild(com);
+
+    body.appendChild(el('div','label','Статус'));
+    var ready=el('div','toggle'+(u.ready?' on':''));
+    ready.innerHTML='<span class="box"></span><span>Готов к возврату</span>';
+    ready.onclick=function(ev){ ev.stopPropagation(); ready.classList.toggle('on'); };
+    body.appendChild(ready);
+
+    var save=el('button','save','Сохранить');
+    save.onclick=function(ev){
+      ev.stopPropagation();
+      save.disabled=true; save.textContent='Сохраняю…';
+      var checked=[];
+      chips.querySelectorAll('.chip.on').forEach(function(x){ checked.push(x.dataset.fault); });
+      var payload={ id:u.id, checked:checked, partNote:note.value.trim(), comment:com.value.trim(), ready:ready.classList.contains('on') };
+      // Исходный серийник шлём всегда — поле всегда на экране.
+      payload.ssdOut=ssdOut.inp.value.trim();
+      // А номер установленного — только когда блок показан: ключа нет, значит
+      // сервер не тронет ячейку. Снятая галочка «ссд» не должна стирать то,
+      // что уже записано.
+      if(ssdWrap.style.display!=='none'){
+        payload.ssdIn=ssdIn.inp.value.trim();
+      }
+      google.script.run
+        .withSuccessHandler(function(res){
+          save.disabled=false; save.textContent='Сохранить';
+          if(!res || !res.ok){ toast((res&&res.msg)||'Не сохранилось'); return; }
+          // обновляем модель и бейдж на месте
+          u.checked=checked; u.diagnosed=res.diagnosed; u.partNote=payload.partNote; u.comment=payload.comment; u.ready=payload.ready;
+          if(payload.ssdOut!==undefined) u.ssdOut=payload.ssdOut;
+          if(payload.ssdIn!==undefined)  u.ssdIn=payload.ssdIn;
+          var nb=badge(u); var bEl=head.querySelector('.badge');
+          bEl.className='badge '+nb.cls; bEl.textContent=nb.txt;
+          toast('Сохранено');
+        })
+        .withFailureHandler(function(e){
+          save.disabled=false; save.textContent='Сохранить'; toast('Ошибка: '+e.message);
+        })
+        .saveUnit(payload);
+    };
+    body.appendChild(save);
+
+    c.appendChild(body);
+
+    head.onclick=function(){ c.classList.toggle('open'); };
+    short.onclick=function(){ c.classList.toggle('open'); };
+
+    return c;
+  }
+
+  var toastT;
+  function toast(msg){
+    var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toastT); toastT=setTimeout(function(){ t.classList.remove('show'); },1800);
+  }
+
+  load();
+</script>
+</body>
+</html>

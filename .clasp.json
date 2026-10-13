@@ -1,0 +1,10 @@
+{
+  "scriptId": "СЮДА_ИДЕНТИФИКАТОР_ВАШЕГО_СКРИПТА",
+  "parentId": "СЮДА_ИДЕНТИФИКАТОР_ВАШЕЙ_ТАБЛИЦЫ",
+  "rootDir": "src",
+  "scriptExtensions": [".js", ".gs"],
+  "jsonExtensions": [".json"],
+  "htmlExtensions": [".html"],
+  "filePushOrder": [],
+  "skipSubdirectories": false
+}
