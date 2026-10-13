@@ -97,8 +97,8 @@ function buildIntakeActPdf_(folder, actNo, dateObj, respBank, respUs, rows) {
 
   // Подписи — таблица 2×1 без границ.
   const sig = body.appendTable([[
-    'ПЕРЕДАЛ\n«___»_____________2026 г.\nООО «Заказчик»\n\n___________ ' + respBank,
-    'ПРИНЯЛ\n«___»_____________2026 г.\nИП Иванов И.И. (СЦ Пример)\n\n___________ ' + respUs
+    'ПЕРЕДАЛ\n«___»_____________' + dateObj.getFullYear() + ' г.\nООО «Заказчик»\n\n___________ ' + respBank,
+    'ПРИНЯЛ\n«___»_____________' + dateObj.getFullYear() + ' г.\nИП Иванов И.И. (СЦ Пример)\n\n___________ ' + respUs
   ]]);
   sig.setBorderWidth(0);
   for (let c = 0; c < 2; c++) {
@@ -289,8 +289,8 @@ function buildHandoverActPdf_(folder, actNo, dateObj, respBank, respUs, rows) {
 
   // Подписи зеркальны забору: слева ПРИНЯЛ (заказчик), справа ПЕРЕДАЛ (мы).
   const sig = body.appendTable([[
-    'ПРИНЯЛ\n«___»_____________2026 г.\nООО «Заказчик»\n\n___________ ' + respBank,
-    'ПЕРЕДАЛ\n«___»_____________2026 г.\nИП Иванов И.И. (СЦ Пример)\n\n___________ ' + respUs
+    'ПРИНЯЛ\n«___»_____________' + dateObj.getFullYear() + ' г.\nООО «Заказчик»\n\n___________ ' + respBank,
+    'ПЕРЕДАЛ\n«___»_____________' + dateObj.getFullYear() + ' г.\nИП Иванов И.И. (СЦ Пример)\n\n___________ ' + respUs
   ]]);
   sig.setBorderWidth(0);
   for (let c = 0; c < 2; c++) {
