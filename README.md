@@ -218,8 +218,8 @@ ZXing, которая подгружается только в момент пе
 <https://script.google.com/home/usersettings>, тумблер **Google Apps Script API**.
 
 ```bash
-git clone <адрес этого репозитория> kinetika
-cd kinetika
+git clone <адрес этого репозитория> service-crm
+cd service-crm
 npm ci
 ```
 

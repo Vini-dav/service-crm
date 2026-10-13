@@ -33,7 +33,7 @@ function fetchRemote() {
     console.error('✗ в .clasp.json не заполнен scriptId — смотри README, раздел «Разовая настройка».');
     process.exit(1);
   }
-  const dir = mkdtempSync(join(tmpdir(), 'kinetika-'));
+  const dir = mkdtempSync(join(tmpdir(), 'service-crm-'));
   writeFileSync(join(dir, '.clasp.json'), JSON.stringify({ scriptId, rootDir: '.' }, null, 2));
   execFileSync(join(process.cwd(), CLASP), ['pull'], { cwd: dir, stdio: 'pipe' });
   return dir;
